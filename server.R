@@ -28,9 +28,18 @@ server <- function(input, output, session) {
     p = sub_df() %>%
       ggplot(aes(x1, x2, col = label)) + 
       geom_point() +
-      theme_bw()
+      theme_bw() +
+      theme(axis.title.x=element_blank(),
+            axis.title.y=element_blank(),
+            legend.position="none",
+            plot.margin = margin(0, 0, 0, 0, "cm"),
+            panel.background=element_blank(),
+            panel.border=element_blank(),
+            plot.background=element_blank())
     
-    ggplotly(p)
+    ggplotly(p) %>%
+      event_register('plotly_click') %>%
+      config(displayModeBar = F)
   })
   
 
@@ -59,19 +68,53 @@ server <- function(input, output, session) {
     
   })
   
+  observeEvent(input$clear_small_images, {
+    small_cluster_imgs(NULL)
+  })
   output$image_outputs = renderUI({
-    req(small_cluster_imgs())
-    small_cluster_imgs()
-    
+    if(is.null(small_cluster_imgs())){
+      tags$span("Click button to show images :)", class = "text-primary")
+    }else{
+      div(
+        style = "display: flex; flex-direction: row; flex-wrap: wrap;",
+        small_cluster_imgs()
+      )
+    }
+  })
+  
+  observeEvent(input$select_link,{
+    showModal(
+      modalDialog(
+        size = "l",
+        title = tags$span(
+          tags$b(input$select_link), 
+          "的詳細資訊", HTML("&nbsp;&nbsp;"), 
+          tags$span(
+            style = "position: absolute; right: 0px; margin-right: 10px;",
+            modalButton("", icon = icon('times'))
+          )
+        ),
+        easyClose = TRUE,
+        tags$img(src = input$select_link),
+        footer = NULL
+      )
+    )
   })
   
   click_history = reactiveVal()
   observeEvent(event_data("plotly_click"),{
+    
+    click_data = event_data("plotly_click") %>%
+      select(x, y) %>%
+      rename(x1 = x, x2 = y) %>%
+      left_join(sub_df(), by = c("x1","x2"))
+    
     new = bind_rows(
       click_history(),
-      event_data("plotly_click")
+      click_data
     )
     click_history(new)
+      
   })
   observeEvent(input$clear, {
     click_history(NULL)
@@ -79,20 +122,17 @@ server <- function(input, output, session) {
   
   output$comparison = renderUI({
     
-    req(click_history())
-    
-    click_df = click_history() %>%
-      select(x, y) %>%
-      rename(x1 = x, x2 = y)
-    
-    imgs = click_df %>%
-      left_join(sub_df(), by = c("x1","x2")) %>%
-      pull(img)
-    size = rep("200px", length(imgs))
-    
-    purrr::map2(imgs, size, my_img_func)
-    
-    
+    if(is.null(click_history())){
+      tags$span("Click chart point to show images :)", class = "text-primary")
+    }else{
+      imgs = click_history() %>% pull(img)
+      size = rep("200px", length(imgs))
+      
+      div(
+        style = "display: flex; flex-direction: row; flex-wrap: wrap;",
+        purrr::map2(imgs, size, my_img_func)
+      )
+    }
   })
   
   output$myImage <- renderImage({
